@@ -1,16 +1,19 @@
 """日本株セクター資金フロー可視化アプリ - Streamlit エントリポイント。"""
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from src.analytics.flow import compute_share, compute_turnover
 from src.analytics.returns import PERIODS_TRADING_DAYS, period_returns
 from src.analytics.rrg import compute_rrg
-from src.data.constituents import SECTOR_CONSTITUENTS
+from src.data.constituents import get_constituents
 from src.data.jpx_investor import get_investor_flow
-from src.data.sectors import TOPIX17_ETFS
+from src.data.sectors import ALL_INDICES, TOPIX17_ETFS
 from src.data.stock_loader import get_stocks_data
 from src.data.stooq_loader import get_sector_data
+from src.data.theme_loader import get_theme_data
+from src.data.themes import THEME_NAMES
 from src.views.drilldown import (
     build_drilldown_table,
     render_constituent_chart,
@@ -34,32 +37,53 @@ st.set_page_config(
 
 
 @st.cache_data(ttl=60 * 60 * 6)
-def load_data():
+def load_sector_data():
     return get_sector_data()
 
 
 @st.cache_data(ttl=60 * 60 * 6)
+def load_theme_data():
+    return get_theme_data()
+
+
+@st.cache_data(ttl=60 * 60 * 6)
+def load_combined_data():
+    """セクターETF + テーマ合成指数 を同一インデックスで結合した (close, volume)。"""
+    sc, sv = load_sector_data()
+    tc, tv = load_theme_data()
+    if sc.empty and tc.empty:
+        return pd.DataFrame(), pd.DataFrame()
+    close = pd.concat([sc, tc], axis=1).sort_index() if not tc.empty else sc
+    volume = pd.concat([sv, tv], axis=1).sort_index() if not tv.empty else sv
+    # 重複日インデックス防御
+    close = close[~close.index.duplicated(keep="last")]
+    volume = volume[~volume.index.duplicated(keep="last")]
+    return close, volume
+
+
+@st.cache_data(ttl=60 * 60 * 6)
 def cached_returns():
-    close, _ = load_data()
+    close, _ = load_combined_data()
     return period_returns(close)
 
 
 @st.cache_data(ttl=60 * 60 * 6)
 def cached_rrg(window: int):
-    close, _ = load_data()
+    close, _ = load_combined_data()
     return compute_rrg(close, window=window)
 
 
 @st.cache_data(ttl=60 * 60 * 6)
 def cached_share(smooth_days: int):
-    close, volume = load_data()
+    # 売買代金シェアはセクターのみ (テーマと混ぜると重複カウントになる)
+    close, volume = load_sector_data()
     turnover = compute_turnover(close, volume)
     return compute_share(turnover, smooth_days=smooth_days)
 
 
 @st.cache_data(ttl=60 * 60 * 6)
-def cached_constituents(sector_code: str):
-    constituents = SECTOR_CONSTITUENTS.get(sector_code, [])
+def cached_constituents(code: str):
+    constituents = get_constituents(code)
     codes = [c for c, _ in constituents]
     name_map = {c: n for c, n in constituents}
     close, vol = get_stocks_data(codes, lookback_days=200)
@@ -73,12 +97,14 @@ def cached_investor_flow(market: str, weeks: int):
 
 def main() -> None:
     st.title("📊 日本株セクター資金フロー")
-    st.caption("TOPIX-17 業種別ETF + 投資部門別売買状況による資金フロー可視化")
+    st.caption("TOPIX-17 業種別ETF + カスタムテーマ + 投資部門別売買状況による資金フロー可視化")
 
     with st.sidebar:
         st.header("設定")
         if st.button("🔄 全データを再取得"):
-            load_data.clear()
+            load_sector_data.clear()
+            load_theme_data.clear()
+            load_combined_data.clear()
             cached_returns.clear()
             cached_rrg.clear()
             cached_share.clear()
@@ -89,6 +115,7 @@ def main() -> None:
         st.markdown("---")
         st.markdown(
             "**ベンチマーク**: TOPIX-17 等加重\n\n"
+            "**テーマ (★)**: 半導体/防衛/AI・DC/インバウンド の等加重合成指数\n\n"
             "**売買代金**: ETF出来高×終値による擬似値\n\n"
             "**投資部門別**: JPX公式週次データ\n\n"
             "データ: Yahoo Finance / Stooq / JPX"
@@ -104,7 +131,7 @@ def main() -> None:
 
     with tab1:
         st.subheader("期間別騰落率ヒートマップ")
-        st.write("色が**緑=資金流入で上昇**、**赤=流出で下落**。")
+        st.write("色が**緑=資金流入で上昇**、**赤=流出で下落**。★印の行はカスタムテーマ。")
         with st.spinner("データ取得中..."):
             returns_df = cached_returns()
         if returns_df.empty:
@@ -121,23 +148,51 @@ def main() -> None:
         st.write(
             "**Leading**=主導 / **Weakening**=ピークアウト / "
             "**Lagging**=出遅れ / **Improving**=底打ち反転。時計回り循環。"
+            " ◆=テーマ、●=セクター。"
         )
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
             window = st.slider("RSウィンドウ (週)", 8, 26, 14, 1)
         with c2:
-            tail = st.slider("軌跡の表示週数", 4, 26, 10, 1)
+            tail = st.slider("軌跡の表示週数", 3, 20, 6, 1)
+        with c3:
+            dim_center = st.slider("中央近傍を薄表示する半径", 0.0, 3.0, 1.2, 0.2,
+                                    help="この距離以内のセクターは半透明化")
+
         with st.spinner("RRG計算中..."):
             rs_ratio, rs_mom = cached_rrg(window)
         if rs_ratio.empty:
             st.warning("データ不足。")
         else:
-            st.plotly_chart(render_rrg(rs_ratio, rs_mom, tail_weeks=tail), use_container_width=True)
+            # 表示対象セレクタ: デフォルトは中心からの距離が大きいTOP10
+            last_x = rs_ratio.iloc[-1]
+            last_y = rs_mom.iloc[-1]
+            common = [c for c in last_x.index if c in last_y.index and c in ALL_INDICES]
+            distances = pd.Series(
+                {c: ((last_x[c] - 100) ** 2 + (last_y[c] - 100) ** 2) ** 0.5 for c in common}
+            ).sort_values(ascending=False)
+            default_sel = distances.head(10).index.tolist()
+            options = list(distances.index)
+            sel = st.multiselect(
+                "表示するセクター/テーマ (中心からの距離が大きい順に既定選択)",
+                options=options,
+                default=default_sel,
+                format_func=lambda c: f"{'★' if c.startswith('T') else '●'} {ALL_INDICES.get(c, c)}",
+            )
+
+            st.plotly_chart(
+                render_rrg(rs_ratio, rs_mom, tail_weeks=tail,
+                            selected_codes=sel, dim_center_radius=dim_center),
+                use_container_width=True,
+            )
             st.caption(f"最新基準週: {rs_ratio.index[-1].date()}")
 
     with tab3:
         st.subheader("売買代金シェア推移")
-        st.write("100%積み上げで「実弾(売買代金)がどのセクターに集まっているか」の時系列推移。")
+        st.write(
+            "100%積み上げで「実弾(売買代金)がどのセクターに集まっているか」の時系列推移。"
+            "セクターETFのみ集計 (テーマはセクターと重複するため除外)。"
+        )
         c1, c2 = st.columns(2)
         with c1:
             lookback = st.selectbox("表示期間", ["1ヶ月", "3ヶ月", "6ヶ月", "1年"], index=1)
@@ -162,15 +217,18 @@ def main() -> None:
                     st.dataframe(movers.tail(5).iloc[::-1], hide_index=True)
 
     with tab4:
-        st.subheader("セクター内ドリルダウン")
-        st.write("セクターを選んで、その中でどの銘柄が買われているかを確認。")
+        st.subheader("セクター/テーマ内ドリルダウン")
+        st.write("セクターまたはテーマを選んで、その中でどの銘柄が買われているかを確認。")
 
-        sector_options = {f"{TOPIX17_ETFS[c]} ({c})": c for c in TOPIX17_ETFS}
-        sel_label = st.selectbox("セクターを選択", list(sector_options.keys()), index=8)
-        sector_code = sector_options[sel_label]
+        # セクター + テーマを同じセレクタに統合
+        sector_options = {f"●{TOPIX17_ETFS[c]} ({c})": c for c in TOPIX17_ETFS}
+        theme_options = {f"★{THEME_NAMES[c]} ({c})": c for c in THEME_NAMES}
+        all_options = {**theme_options, **sector_options}  # テーマを上に
+        sel_label = st.selectbox("カテゴリを選択", list(all_options.keys()), index=0)
+        code = all_options[sel_label]
 
         with st.spinner(f"{sel_label} の構成銘柄データ取得中..."):
-            close_d, vol_d, name_map = cached_constituents(sector_code)
+            close_d, vol_d, name_map = cached_constituents(code)
 
         if close_d.empty:
             st.warning("データ取得に失敗しました。")

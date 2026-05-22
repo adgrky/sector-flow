@@ -4,14 +4,14 @@ from __future__ import annotations
 import pandas as pd
 import plotly.graph_objects as go
 
-from ..data.sectors import TOPIX17_ETFS
+from ..data.sectors import ALL_INDICES
 
 
 def render_heatmap(returns_df: pd.DataFrame, sort_by: str = "1週") -> go.Figure:
     """期間別騰落率ヒートマップを返す。"""
     df = returns_df.copy()
-    df = df.loc[df.index.isin(TOPIX17_ETFS.keys())]
-    df.index = [TOPIX17_ETFS[c] for c in df.index]
+    df = df.loc[df.index.isin(ALL_INDICES.keys())]
+    df.index = [ALL_INDICES[c] for c in df.index]
 
     if sort_by in df.columns:
         df = df.sort_values(sort_by, ascending=False)
@@ -42,8 +42,10 @@ def render_heatmap(returns_df: pd.DataFrame, sort_by: str = "1週") -> go.Figure
             colorbar={"title": "騰落率 (%)"},
         )
     )
+    # 行数に応じて高さを動的調整 (21行=セクター17+テーマ4を想定)
+    row_count = len(df.index)
     fig.update_layout(
-        height=620,
+        height=max(620, 32 * row_count + 120),
         margin=dict(l=140, r=20, t=40, b=40),
         yaxis=dict(autorange="reversed"),
     )

@@ -1,4 +1,6 @@
-"""TOPIX-17 セクター定義とETFティッカー対応。"""
+"""TOPIX-17 セクター定義 + カスタムテーマの統合インデックス対応。"""
+
+from .themes import THEME_NAMES
 
 TOPIX17_ETFS: dict[str, str] = {
     "1617": "食品",
@@ -20,4 +22,11 @@ TOPIX17_ETFS: dict[str, str] = {
     "1633": "不動産",
 }
 
+# テーマ込みの統合表示用辞書 (ヒートマップ・RRG はこちらを使用)
+ALL_INDICES: dict[str, str] = {**TOPIX17_ETFS, **THEME_NAMES}
+
 BENCHMARK_NAME = "TOPIX17等加重"
+
+
+def is_theme(code: str) -> bool:
+    return code in THEME_NAMES

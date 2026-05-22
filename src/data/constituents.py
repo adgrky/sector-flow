@@ -101,5 +101,15 @@ SECTOR_CONSTITUENTS: dict[str, list[tuple[str, str]]] = {
 }
 
 
-def get_constituents(sector_code: str) -> list[tuple[str, str]]:
-    return SECTOR_CONSTITUENTS.get(sector_code, [])
+def get_constituents(code: str) -> list[tuple[str, str]]:
+    """セクターまたはテーマの構成銘柄を返す。"""
+    if code in SECTOR_CONSTITUENTS:
+        return SECTOR_CONSTITUENTS[code]
+    # テーマコード (T..) の場合
+    try:
+        from .themes import THEMES
+        if code in THEMES:
+            return THEMES[code]["constituents"]
+    except Exception:
+        pass
+    return []
