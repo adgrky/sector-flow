@@ -131,7 +131,13 @@ def main() -> None:
 
     with tab1:
         st.subheader("期間別騰落率ヒートマップ")
-        st.write("色が**緑=資金流入で上昇**、**赤=流出で下落**。★印の行はカスタムテーマ。")
+        st.write(
+            "色が**緑=資金流入で上昇**、**赤=流出で下落**。★印=カスタムテーマ。"
+            "Y軸の **↑↑/↑/→/↓/↓↓** は「1週ペース vs 1ヶ月ペース」の加速度判定。"
+        )
+        close_for_date, _ = load_combined_data()
+        if not close_for_date.empty:
+            st.caption(f"📅 データ最終日: {close_for_date.index[-1].date()}")
         with st.spinner("データ取得中..."):
             returns_df = cached_returns()
         if returns_df.empty:
@@ -159,6 +165,9 @@ def main() -> None:
             dim_center = st.slider("中央近傍を薄表示する半径", 0.0, 3.0, 1.2, 0.2,
                                     help="この距離以内のセクターは半透明化")
 
+        close_for_date, _ = load_combined_data()
+        if not close_for_date.empty:
+            st.caption(f"📅 データ最終日: {close_for_date.index[-1].date()}")
         with st.spinner("RRG計算中..."):
             rs_ratio, rs_mom = cached_rrg(window)
         if rs_ratio.empty:
@@ -199,6 +208,9 @@ def main() -> None:
         with c2:
             smooth = st.slider("平滑化(日)", 1, 20, 5, 1)
         lookback_days = {"1ヶ月": 21, "3ヶ月": 63, "6ヶ月": 126, "1年": 252}[lookback]
+        close_for_date, _ = load_sector_data()
+        if not close_for_date.empty:
+            st.caption(f"📅 データ最終日: {close_for_date.index[-1].date()}")
         with st.spinner("計算中..."):
             share = cached_share(smooth)
         if share.empty:
@@ -233,6 +245,7 @@ def main() -> None:
         if close_d.empty:
             st.warning("データ取得に失敗しました。")
         else:
+            st.caption(f"📅 データ最終日: {close_d.index[-1].date()}")
             table = build_drilldown_table(close_d, vol_d, name_map)
             sort_options = ["1日%", "1週%", "1ヶ月%", "3ヶ月%", "売買代金(直近5日平均)", "出来高変化%(vs 前5日)"]
             sort_by = st.selectbox("並べ替え基準", sort_options, index=1)
