@@ -54,8 +54,8 @@ def load_combined_data():
     tc, tv = load_theme_data()
     if sc.empty and tc.empty:
         return pd.DataFrame(), pd.DataFrame()
-    close = pd.concat([sc, tc], axis=1).sort_index() if not tc.empty else sc
-    volume = pd.concat([sv, tv], axis=1).sort_index() if not tv.empty else sv
+    close = pd.concat([sc, tc], axis=1, sort=True).sort_index() if not tc.empty else sc
+    volume = pd.concat([sv, tv], axis=1, sort=True).sort_index() if not tv.empty else sv
     # 重複日インデックス防御
     close = close[~close.index.duplicated(keep="last")]
     volume = volume[~volume.index.duplicated(keep="last")]

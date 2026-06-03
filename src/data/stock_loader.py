@@ -61,7 +61,7 @@ def get_stocks_data(codes: list[str], lookback_days: int = 400) -> tuple[pd.Data
     if not frames:
         return pd.DataFrame(), pd.DataFrame()
 
-    merged = pd.concat(frames, axis=1).sort_index()
+    merged = pd.concat(frames, axis=1, sort=True).sort_index()
     # 万一の重複コードに対する防御: 同名カラムが複数あれば最初のものを採用
     merged = merged.loc[:, ~merged.columns.duplicated()]
     merged.index = pd.to_datetime(merged.index).tz_localize(None)

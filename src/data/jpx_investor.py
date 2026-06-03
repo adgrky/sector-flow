@@ -166,7 +166,7 @@ def get_investor_flow(
         new_df = new_df.dropna(subset=["週"]).set_index("週")
     # 既存とマージ
     if not existing.empty and not new_df.empty:
-        df = pd.concat([existing, new_df])
+        df = pd.concat([existing, new_df], sort=True)
         df = df[~df.index.duplicated(keep="last")].sort_index()
     elif not new_df.empty:
         df = new_df.sort_index()

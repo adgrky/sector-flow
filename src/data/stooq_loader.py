@@ -88,7 +88,7 @@ def fetch_ohlcv(
         time.sleep(0.2)
     if not frames:
         return pd.DataFrame()
-    out = pd.concat(frames, axis=1).sort_index()
+    out = pd.concat(frames, axis=1, sort=True).sort_index()
     out.index = pd.to_datetime(out.index).tz_localize(None)
     out = out[(out.index >= pd.Timestamp(start)) & (out.index <= pd.Timestamp(end))]
     return out
