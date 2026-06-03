@@ -20,6 +20,7 @@ from src.views.drilldown import (
     render_drilldown_table,
 )
 from src.views.heatmap import render_heatmap
+from src.views.mobile import render_mobile_digest
 from src.views.investor_flow import (
     INVESTOR_ORDER,
     latest_summary,
@@ -121,13 +122,24 @@ def main() -> None:
             "データ: Yahoo Finance / Stooq / JPX"
         )
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab0, tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📱 ダイジェスト",
         "🔥 ヒートマップ",
         "🌀 RRG",
         "💴 売買代金シェア",
         "🔍 セクタードリルダウン",
         "🌍 投資部門別フロー",
     ])
+
+    with tab0:
+        st.subheader("📱 今どこに資金が向かっているか")
+        st.caption("スマホ向け1画面ダイジェスト。詳細は他のタブで。")
+        ret_for_mobile = cached_returns()
+        rs_r, rs_m = cached_rrg(14)
+        inv = cached_investor_flow("TSE Prime", 8)
+        close_for_mobile, _ = load_combined_data()
+        last_d = close_for_mobile.index[-1] if not close_for_mobile.empty else None
+        render_mobile_digest(ret_for_mobile, rs_r, rs_m, inv, last_d)
 
     with tab1:
         st.subheader("期間別騰落率ヒートマップ")
